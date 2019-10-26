@@ -3,6 +3,7 @@
 /neuralcoref/train/test_mentions.txt
 /models/
 /data/
+/runs/
 
 # Cython / C extensions
 cythonize.json
