@@ -68,6 +68,7 @@ class Model(nn.Module):
             layer.bias = nn.Parameter(torch.from_numpy(b).float().squeeze())
 
     def forward(self, inputs, concat_axis=1):
+        inputs = tuple(inputs)
         pairs = (len(inputs) == 10)
         if pairs:
             spans, words, single_features, ant_spans, ant_words, ana_spans, ana_words, pair_features, contexts, masks \
