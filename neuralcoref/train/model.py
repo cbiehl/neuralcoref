@@ -91,7 +91,7 @@ class Model(nn.Module):
             ana_words_long = ana_words.view(batchsize, -1).type(torch.LongTensor).to(self.device)
             ant_embed_words = self.drop(self.word_embeds(ant_words_long).view(batchsize, pairs_num, -1))
             ana_embed_words = self.drop(self.word_embeds(ana_words_long).view(batchsize, pairs_num, -1))
-            pair_input = torch.cat([ant_spans, ant_embed_words, ana_spans, ana_embed_words, embed_contexts, pair_features], 2)
+            pair_input = torch.cat([ant_spans, ant_embed_words, ana_spans, ana_embed_words, pair_features], 2)
             pair_scores = self.pair_top(pair_input).squeeze(dim=2)
             total_scores = torch.cat([pair_scores, single_scores], concat_axis)
         return total_scores if pairs else single_scores

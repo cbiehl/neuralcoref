@@ -115,7 +115,7 @@ def run_model(args):
     print("🏝 Build model")
     model = Model(len(voc), SIZE_EMBEDDING,
                   args.h1, args.h2, args.h3,
-                  SIZE_PAIR_IN + SIZE_CONTEXTUAL_EMBEDDINGS,
+                  SIZE_PAIR_IN,
                   SIZE_SINGLE_IN + SIZE_CONTEXTUAL_EMBEDDINGS)
     model.load_embeddings(tensor_embeddings)
     if args.cuda:
