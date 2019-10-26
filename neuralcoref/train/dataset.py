@@ -298,7 +298,7 @@ def padder_collate(batch, debug=False):
     else:
         transposed_targets = None
 
-    max_pairs = max(len(t) for t in transposed_inputs[3]) if len(transposed_inputs) == 9 else 0 # Get max nb of pairs (batch are sorted by nb of pairs)
+    max_pairs = max(len(t) for t in transposed_inputs[3]) if len(transposed_inputs) == 10 else 0 # Get max nb of pairs (batch are sorted by nb of pairs)
     if max_pairs > 0:
         out_inputs = []
         out_targets = []
