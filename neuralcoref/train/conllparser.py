@@ -12,17 +12,23 @@ import os
 import io
 import pickle
 
+import torch
+
 import spacy
 
 import numpy as np
+from spacy.tokens import Doc
 
 from tqdm import tqdm
+
+from transformers import DistilBertTokenizer
 
 from neuralcoref.train.compat import unicode_
 from neuralcoref.train.document import Mention, Document, Speaker, EmbeddingExtractor, MISSING_WORD, \
     extract_mentions_spans
-from neuralcoref.train.utils import parallel_process
+from neuralcoref.train.utils import parallel_process, CONTEXT_MAX_LEN
 
+BERT_TOKENIZER = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
 PACKAGE_DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 REMOVED_CHAR = ["/", "%", "*"]
 NORMALIZE_DICT = {"/.": ".",
@@ -49,6 +55,8 @@ FEATURES_NAMES = ["mentions_features",          # 0
                   "conll_tokens",               # 10
                   "spacy_lookup",               # 11
                   "doc",                        # 12
+                  "contexts",                   # 13
+                  "context_masks"               # 14
                   ]
 
 MISSED_MENTIONS_FILE = os.path.join(PACKAGE_DIRECTORY, "test_mentions_identification.txt")
@@ -396,6 +404,7 @@ class ConllDoc(Document):
         mentions_pairs_start = []
         mentions_pairs_length = []
         mentions_location = []
+        contexts = []
         n_mentions = 0
         total_pairs = 0
         if debug: print("mentions", self.mentions, str([m.gold_label for m in self.mentions]))
@@ -420,6 +429,19 @@ class ConllDoc(Document):
             mentions_pairs_start.append(total_pairs)
             total_pairs += len(ants)
             mentions_pairs_length.append(len(ants))
+            contexts.append(BERT_TOKENIZER.encode(text=mention.doc._.context,
+                                                  text_pair=None,
+                                                  add_special_tokens=True,
+                                                  max_length=CONTEXT_MAX_LEN,
+                                                  return_tensors='pt').flatten())
+
+        maxlen = CONTEXT_MAX_LEN
+        contexts = [torch.cat((ctx, torch.tensor([BERT_TOKENIZER.pad_token_id] * (maxlen - len(ctx)))))
+                    if len(ctx) < maxlen else ctx
+                    for ctx in contexts]
+        context_masks = [torch.cat((torch.ones(len(ctx)), torch.zeros(maxlen - len(ctx))))
+                         if len(ctx) < maxlen else torch.ones(len(ctx))
+                         for ctx in contexts]
 
         out_dict = {FEATURES_NAMES[0]: mentions_features,
                     FEATURES_NAMES[1]: mentions_labels,
@@ -437,6 +459,8 @@ class ConllDoc(Document):
                                           'part': self.part,
                                           'utterances': list(str(u) for u in self.utterances),
                                           'mentions': list(str(m) for m in self.mentions)}],
+                    FEATURES_NAMES[13]: contexts,
+                    FEATURES_NAMES[14]: context_masks,
                     }
         if debug:
             print("🚘 Summary")
@@ -525,8 +549,8 @@ class ConllCorpus(object):
             if debug: print("Key file saved in", key_file)
             for dirpath, _, filenames in os.walk(data_path):
                 print("In", dirpath)
-                file_list = [os.path.join(dirpath, f) for f in filenames if f.endswith(".v4_auto_conll") \
-                            or f.endswith(".v4_gold_conll")]
+                file_list = [os.path.join(dirpath, f) for f in filenames if f.endswith(".v4_auto_conll")
+                             or f.endswith(".v4_gold_conll")]
                 cleaned_file_list = []
                 for f in file_list:
                     fn = f.split('.')
@@ -556,8 +580,8 @@ class ConllCorpus(object):
         print("🌋 Reading files")
         for dirpath, _, filenames in os.walk(data_path):
             print("In", dirpath, os.path.abspath(dirpath))
-            file_list = [os.path.join(dirpath, f) for f in filenames if f.endswith(".v4_auto_conll") \
-                        or f.endswith(".v4_gold_conll")]
+            file_list = [os.path.join(dirpath, f) for f in filenames if f.endswith(".v4_auto_conll")
+                         or f.endswith(".v4_gold_conll")]
             cleaned_file_list = []
             for f in file_list:
                 fn = f.split('.')
@@ -611,19 +635,43 @@ class ConllCorpus(object):
 
         nlp = spacy.load(model)
         print("🌋 Parsing utterances and filling docs with use_gold_mentions=" + (str(bool(self.gold_mentions))))
+        Doc.set_extension("doc_key", default="-")
+        Doc.set_extension("context", default="")
+        Doc.set_extension("contextlen", default=0)
         doc_iter = (s for s in self.utts_text)
-        for utt_tuple in tqdm(zip(nlp.pipe(doc_iter),
-                                           self.utts_tokens, self.utts_corefs,
-                                           self.utts_speakers, self.utts_doc_idx)):
+        k = 0
+        docs = list(nlp.pipe(doc_iter))
+        for utt_tuple in tqdm(zip(docs,
+                              self.utts_tokens, self.utts_corefs,
+                              self.utts_speakers, self.utts_doc_idx)):
             spacy_tokens, conll_tokens, corefs, speaker, doc_id = utt_tuple
             if debug: print(unicode_(self.docs_names[doc_id]), "-", spacy_tokens)
             doc = spacy_tokens
-            if debug: 
+            doc._.doc_key = doc_id
+            doc._.context = ''.join(token.text_with_ws for token in spacy_tokens)
+            doc._.contextlen = len(spacy_tokens)
+            o = k - 1
+            while o > 0 and doc._.contextlen + len(docs[o]) < CONTEXT_MAX_LEN - 200:
+                if len(docs[o]) > 2:
+                    doc._.context += ''.join(token.text_with_ws for token in docs[o])
+                    doc._.contextlen += len(docs[o])
+                o -= 1
+
+            o = 1
+            while k+o < len(docs) and doc._.contextlen + len(docs[k+o]) < CONTEXT_MAX_LEN - 200:
+                if len(docs[k+o]) > 2:
+                    doc._.context += ''.join(token.text_with_ws for token in docs[k+o])
+                    doc._.contextlen += len(docs[k+o])
+                o += 1
+
+            if debug:
                 out_str = "utterance " + unicode_(doc) + " corefs " + unicode_(corefs) + \
                           " speaker " + unicode_(speaker) + "doc_id" + unicode_(doc_id)
                 print(out_str.encode('utf-8'))
             self.docs[doc_id].add_conll_utterance(doc, conll_tokens, corefs, speaker,
                                                   use_gold_mentions=self.gold_mentions)
+
+            k += 1
 
     def build_and_gather_multiple_arrays(self, save_path):
         print("🌋 Extracting mentions features with {} job(s)".format(self.n_jobs))

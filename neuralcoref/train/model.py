@@ -11,8 +11,11 @@ import torch
 import torch.nn as nn
 import torch.utils.data
 
+from transformers import DistilBertModel, DistilBertTokenizer
+
 class Model(nn.Module):
-    def __init__(self, vocab_size, embedding_dim, H1, H2, H3, D_pair_in, D_single_in, dropout=0.5):
+    def __init__(self, vocab_size, embedding_dim, H1, H2, H3, D_pair_in, D_single_in, dropout=0.5,
+                 bert_model='distilbert-base-uncased'):
         super(Model, self).__init__()
         self.word_embeds = nn.Embedding(vocab_size, embedding_dim)
         self.drop = nn.Dropout(dropout)
@@ -27,6 +30,7 @@ class Model(nn.Module):
                                         nn.Linear(H3, 1),
                                         nn.Linear(1, 1))
         self.init_weights()
+        self.bert = DistilBertModel.from_pretrained(bert_model)
 
     def init_weights(self):
         w = (param.data for name, param in self.named_parameters() if 'weight' in name)
@@ -66,12 +70,18 @@ class Model(nn.Module):
     def forward(self, inputs, concat_axis=1):
         pairs = (len(inputs) == 8)
         if pairs:
-            spans, words, single_features, ant_spans, ant_words, ana_spans, ana_words, pair_features = inputs
+            spans, words, single_features, ant_spans, ant_words, ana_spans, ana_words, pair_features, contexts, masks \
+             = inputs
         else:
-            spans, words, single_features = inputs
+            spans, words, single_features, contexts, masks = inputs
+
+        with torch.no_grad():
+            # BERT output shape: (bs, n_input_ids, hidden_dim)
+            embed_contexts = self.bert(input_ids=contexts, attention_mask=masks)[0][:, 0, :]
+
         words = words.type(torch.LongTensor)
         embed_words = self.drop(self.word_embeds(words).view(words.size()[0], -1))
-        single_input = torch.cat([spans, embed_words, single_features], 1)
+        single_input = torch.cat([spans, embed_words, single_features, embed_contexts], 1)
         single_scores = self.single_top(single_input)
         if pairs:
             batchsize, pairs_num, _ = ana_spans.size()
@@ -79,7 +89,7 @@ class Model(nn.Module):
             ana_words_long = ana_words.view(batchsize, -1).type(torch.LongTensor)
             ant_embed_words = self.drop(self.word_embeds(ant_words_long).view(batchsize, pairs_num, -1))
             ana_embed_words = self.drop(self.word_embeds(ana_words_long).view(batchsize, pairs_num, -1))
-            pair_input = torch.cat([ant_spans, ant_embed_words, ana_spans, ana_embed_words, pair_features], 2)
+            pair_input = torch.cat([ant_spans, ant_embed_words, ana_spans, ana_embed_words, embed_contexts, pair_features], 2)
             pair_scores = self.pair_top(pair_input).squeeze(dim=2)
             total_scores = torch.cat([pair_scores, single_scores], concat_axis)
         return total_scores if pairs else single_scores

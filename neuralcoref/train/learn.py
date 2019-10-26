@@ -22,7 +22,7 @@ from neuralcoref.train.model import Model
 from neuralcoref.train.dataset import (NCDataset, NCBatchSampler,
     load_embeddings_from_file, padder_collate,
     SIZE_PAIR_IN, SIZE_SINGLE_IN)
-from neuralcoref.train.utils import SIZE_EMBEDDING
+from neuralcoref.train.utils import SIZE_EMBEDDING, SIZE_CONTEXTUAL_EMBEDDINGS
 from neuralcoref.train.evaluator import ConllEvaluator
 
 PACKAGE_DIRECTORY = os.path.dirname(os.path.abspath(__file__))
@@ -113,8 +113,10 @@ def run_model(args):
 
     # Construct model
     print("🏝 Build model")
-    model = Model(len(voc), SIZE_EMBEDDING, args.h1,
-                  args.h2, args.h3, SIZE_PAIR_IN, SIZE_SINGLE_IN)
+    model = Model(len(voc), SIZE_EMBEDDING,
+                  args.h1, args.h2, args.h3,
+                  SIZE_PAIR_IN + SIZE_CONTEXTUAL_EMBEDDINGS,
+                  SIZE_SINGLE_IN + SIZE_CONTEXTUAL_EMBEDDINGS)
     model.load_embeddings(tensor_embeddings)
     if args.cuda:
         model.cuda()
@@ -267,6 +269,7 @@ def run_model(args):
         loss_func = get_ranking_loss(batch_sampler.mentions_per_batch)
         g_step = run_epochs(start_from, args.ranking_epoch, loss_func, optimizer,
                             "ranking", args.ranking_lr, g_step)
+
 
 if __name__ == '__main__':
     DIR_PATH = os.path.dirname(os.path.realpath(__file__))

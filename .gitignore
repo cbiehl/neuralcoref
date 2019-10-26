@@ -1,5 +1,6 @@
 # NeuralCoref
 /neuralcoref/train/runs/*
+/neuralcoref/train/test_mentions.txt
 /models/
 /data/
 

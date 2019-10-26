@@ -7,6 +7,7 @@ from __future__ import print_function
 import os
 import io
 import numpy as np
+import pickle
 
 import torch
 import torch.utils.data
@@ -40,6 +41,10 @@ class NCDataset(Dataset):
         numpy_files_found = False
         print("Reading ", end='')
         for file_name in os.listdir(data_path):
+            if 'contexts.bin' in file_name:
+                self.contexts = pickle.load(open(data_path + file_name, 'rb'))
+            if 'context_masks.bin' in file_name:
+                self.context_masks = pickle.load(open(data_path + file_name, 'rb'))
             if not '.npy' in file_name:
                 continue
             numpy_files_found = True
@@ -111,7 +116,7 @@ class NCDataset(Dataset):
             spans = torch.from_numpy(spans).float()
             words = torch.from_numpy(words)
             features = torch.from_numpy(features).float()
-            inputs = (spans, words, features)
+            inputs = (spans, words, features, self.contexts[mention_idx], self.context_masks[mention_idx])
             if self.no_targets:
                 return inputs
             true_ant = torch.zeros(1).long() # zeros = indices of true ant
@@ -173,7 +178,9 @@ class NCDataset(Dataset):
         inputs = (spans, words, features,
                   ant_spans, ant_words,
                   ana_spans, ana_words,
-                  pairs_features)
+                  pairs_features,
+                  self.contexts[mention_idx],
+                  self.context_masks[mention_idx])
 
         if self.no_targets:
             return inputs
@@ -291,14 +298,14 @@ def padder_collate(batch, debug=False):
     else:
         transposed_targets = None
 
-    max_pairs = max(len(t) for t in transposed_inputs[3]) if len(transposed_inputs) == 8 else 0 # Get max nb of pairs (batch are sorted by nb of pairs)
+    max_pairs = max(len(t) for t in transposed_inputs[3]) if len(transposed_inputs) == 9 else 0 # Get max nb of pairs (batch are sorted by nb of pairs)
     if max_pairs > 0:
         out_inputs = []
         out_targets = []
         for t_inp in transposed_inputs:
             if len(t_inp[0].shape) == 2:
-                out_inputs.append(torch.stack([torch.cat([t, t.new(max_pairs - len(t), len(t[0])).zero_()]) \
-                                            if len(t) != max_pairs else t for t in t_inp], 0))
+                out_inputs.append(torch.stack([torch.cat([t, t.new(max_pairs - len(t), len(t[0])).zero_()])
+                                               if len(t) != max_pairs else t for t in t_inp], 0))
             else:
                 out_inputs.append(torch.stack(t_inp, 0))
         if transposed_targets is not None:
@@ -339,4 +346,5 @@ def padder_collate(batch, debug=False):
             out_targets.append(out_targets[1].new(len(out_targets[1]), 1).fill_(1))
         else:
             out_targets = out_inputs[0].new(len(out_inputs[0]), 1).zero_().bool()
-    return (out_inputs, out_targets)
+
+    return out_inputs, out_targets

@@ -13,6 +13,8 @@ import pickle
 import torch
 from torch.utils.data import DataLoader
 
+from tqdm import tqdm
+
 from neuralcoref.train.conllparser import FEATURES_NAMES
 from neuralcoref.train.dataset import NCBatchSampler, padder_collate
 from neuralcoref.train.compat import unicode_
@@ -134,13 +136,16 @@ class ConllEvaluator(object):
     def get_max_score(self, batch, debug=False):
         inputs, mask = batch
         if self.cuda:
-            inputs = tuple(i.cuda() for i in inputs)
+            inputs[0] = tuple(i.cuda() for i in inputs[0])
+            inputs[1] = tuple(i.cuda() for i in inputs[1])
+            inputs[-2] = tuple(i.cuda() for i in inputs[-2])
+            inputs[-1] = tuple(i.cuda() for i in inputs[-1])
             mask = mask.cuda()
         self.model.eval()
         with torch.no_grad():
             scores = self.model(inputs, concat_axis=1)
             scores.masked_fill_(mask, -float('Inf'))
-            _, max_idx = scores.max(dim=1) # We may want to weight the single score with coref.greedyness
+            _, max_idx = scores.max(dim=1)  # We may want to weight the single score with coref.greedyness
         if debug:
             print("Max_idx", max_idx)
         return scores.cpu().numpy(), max_idx.cpu().numpy()
@@ -158,10 +163,13 @@ class ConllEvaluator(object):
         self.dataloader.dataset.no_targets = True
         if not print_all_mentions:
             print("🌋 Build coreference clusters")
-            for sample_batched, mentions_idx, n_pairs_l in zip(self.dataloader, self.mentions_idx, self.n_pairs):
+            cid = 0
+            for sample_batched, mentions_idx, n_pairs_l in tqdm(zip(self.dataloader, self.mentions_idx, self.n_pairs), total=len(self.n_pairs)):
+                print("Scoring cluster " + str(cid))
+                cid += 1
                 scores, max_i = self.get_max_score(sample_batched)
                 for m_idx, ind, n_pairs in zip(mentions_idx, max_i, n_pairs_l):
-                    if ind < n_pairs : # the single score is not the highest, we have a match !
+                    if ind < n_pairs:  # the single score is not the highest, we have a match !
                         prev_idx = m_idx - n_pairs + ind
                         if debug is not None and (debug == -1 or debug == prev_idx or debug == m_idx):
                             m1_doc, m1_idx = self.flat_m_idx[m_idx]
