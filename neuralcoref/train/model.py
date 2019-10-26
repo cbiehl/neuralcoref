@@ -17,6 +17,7 @@ class Model(nn.Module):
     def __init__(self, vocab_size, embedding_dim, H1, H2, H3, D_pair_in, D_single_in, dropout=0.5,
                  bert_model='distilbert-base-uncased'):
         super(Model, self).__init__()
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.word_embeds = nn.Embedding(vocab_size, embedding_dim)
         self.drop = nn.Dropout(dropout)
         self.pair_top = nn.Sequential(nn.Linear(D_pair_in, H1), nn.ReLU(), nn.Dropout(dropout),
@@ -80,14 +81,14 @@ class Model(nn.Module):
             # BERT output shape: (bs, n_input_ids, hidden_dim)
             embed_contexts = self.bert(input_ids=contexts, attention_mask=masks)[0][:, 0, :]
 
-        words = words.type(torch.LongTensor)
+        words = words.type(torch.LongTensor).to(self.device)
         embed_words = self.drop(self.word_embeds(words).view(words.size()[0], -1))
         single_input = torch.cat([spans, embed_words, single_features, embed_contexts], 1)
         single_scores = self.single_top(single_input)
         if pairs:
             batchsize, pairs_num, _ = ana_spans.size()
-            ant_words_long = ant_words.view(batchsize, -1).type(torch.LongTensor)
-            ana_words_long = ana_words.view(batchsize, -1).type(torch.LongTensor)
+            ant_words_long = ant_words.view(batchsize, -1).type(torch.LongTensor).to(self.device)
+            ana_words_long = ana_words.view(batchsize, -1).type(torch.LongTensor).to(self.device)
             ant_embed_words = self.drop(self.word_embeds(ant_words_long).view(batchsize, pairs_num, -1))
             ana_embed_words = self.drop(self.word_embeds(ana_words_long).view(batchsize, pairs_num, -1))
             pair_input = torch.cat([ant_spans, ant_embed_words, ana_spans, ana_embed_words, embed_contexts, pair_features], 2)
