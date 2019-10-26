@@ -160,10 +160,7 @@ class ConllEvaluator(object):
         self.dataloader.dataset.no_targets = True
         if not print_all_mentions:
             print("🌋 Build coreference clusters")
-            cid = 0
-            for sample_batched, mentions_idx, n_pairs_l in tqdm(zip(self.dataloader, self.mentions_idx, self.n_pairs), total=len(self.n_pairs)):
-                print("Scoring cluster " + str(cid))
-                cid += 1
+            for sample_batched, mentions_idx, n_pairs_l in zip(self.dataloader, self.mentions_idx, self.n_pairs):
                 scores, max_i = self.get_max_score(sample_batched)
                 for m_idx, ind, n_pairs in zip(mentions_idx, max_i, n_pairs_l):
                     if ind < n_pairs:  # the single score is not the highest, we have a match !
