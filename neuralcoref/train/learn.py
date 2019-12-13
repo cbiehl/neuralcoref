@@ -116,7 +116,11 @@ def run_model(args):
     model = Model(len(voc), SIZE_EMBEDDING,
                   args.h1, args.h2, args.h3,
                   SIZE_PAIR_IN,
-                  SIZE_SINGLE_IN + SIZE_CONTEXTUAL_EMBEDDINGS)
+                  SIZE_SINGLE_IN,
+                  bert_model=args.bert_model,
+                  D_bert=SIZE_CONTEXTUAL_EMBEDDINGS,
+                  finetune_bert=args.finetune_bert,
+                  bert_pretrained_dir_path=args.bert_pretrained_dir_path)
     model.load_embeddings(tensor_embeddings)
     if args.cuda:
         model.cuda()
@@ -306,6 +310,12 @@ if __name__ == '__main__':
     parser.add_argument('--min_lr', type=float, default=2e-8, help='min learning rate')
     parser.add_argument('--on_eval_decrease', type=str, default='nothing',
                         help='What to do when evaluation decreases ("nothing", "divide_lr", "next_stage", "divide_then_next")')
+    parser.add_argument('--bert_model', type=str, default='distilbert-base-uncased',
+                        help='BERT model ID (huggingface transformers model or "spanbert-base")')
+    parser.add_argument('--bert_pretrained_dir_path', type=str, default=None,
+                        help='path to directory for pretrained BERT model (required for SpanBERT)')
+    parser.add_argument('--finetune_bert', type=bool, default=False,
+                        help='whether to finetune the BERT model during training')
     args = parser.parse_args()
 
     args.costs = {'FN': args.costfn, 'FL': args.costfl, 'WL' : args.costwl }

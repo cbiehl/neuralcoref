@@ -21,14 +21,14 @@ from spacy.tokens import Doc
 
 from tqdm import tqdm
 
-from transformers import DistilBertTokenizer
+from transformers import DistilBertTokenizer, BertTokenizer
 
 from neuralcoref.train.compat import unicode_
 from neuralcoref.train.document import Mention, Document, Speaker, EmbeddingExtractor, MISSING_WORD, \
     extract_mentions_spans
 from neuralcoref.train.utils import parallel_process, CONTEXT_MAX_LEN
 
-BERT_TOKENIZER = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
+BERT_TOKENIZER = BertTokenizer.from_pretrained('bert-base-cased')  # DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
 PACKAGE_DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 REMOVED_CHAR = ["/", "%", "*"]
 NORMALIZE_DICT = {"/.": ".",

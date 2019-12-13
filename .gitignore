@@ -4,6 +4,7 @@
 /models/
 /data/
 /runs/
+/pretrained_models/
 
 # Cython / C extensions
 cythonize.json
