@@ -624,9 +624,10 @@ cdef class NeuralCoref(object):
             yield from docs
 
     def predict(self, docs, float greedyness=0.5, int max_dist=MAX_DIST, int max_dist_match=MAX_DIST_MATCH,
-                conv_dict=None, bint blacklist=False):
+                conv_dict=None, bint blacklist=False, list input_mentions=None):
         ''' Predict coreference clusters
         docs (iterable): A sequence of `Doc` objects.
+        optionally accepts custom mention detection (if you pass a list of spacy spans as mention in input_mentions)
         RETURNS (iterable): List of (lists of mentions, lists of clusters, lists of main mentions per cluster) for each doc.
         '''
         cdef:
@@ -648,11 +649,15 @@ cdef class NeuralCoref(object):
 
         annotations = []
         # if debug: print("Extract mentions")
-        for doc in docs:
+        for doc_n, doc in enumerate(docs):
             mem = Pool() # We use this for doc specific allocation
             strings = doc.vocab.strings
             # ''' Extract mentions '''
-            mentions, n_mentions = extract_mentions_spans(doc, self.hashes, blacklist=blacklist)
+            if input_mentions is not None:
+                mentions, n_mentions = input_mentions[doc_n], len(input_mentions[doc_n])
+            else:
+                mentions, n_mentions = extract_mentions_spans(doc, self.hashes, blacklist=blacklist)
+
             n_sents = len(list(doc.sents))
             mentions = sorted((m for m in mentions), key=lambda m: (m.root.i, m.start))
             c = <Mention_C*>mem.alloc(n_mentions, sizeof(Mention_C))
